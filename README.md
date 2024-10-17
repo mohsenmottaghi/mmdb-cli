@@ -1,4 +1,6 @@
 # MMDB CLI
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fmohsenmottaghi%2Fmmdb-cli.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fmohsenmottaghi%2Fmmdb-cli?ref=badge_shield)
+
 
 MMDB CLI is a tool kit for working with MMDB files.
 
@@ -17,3 +19,7 @@ Then, you can run the project with the following command:
 ```bash
 ./mmdb-cli # Run the project
 ```
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fmohsenmottaghi%2Fmmdb-cli.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fmohsenmottaghi%2Fmmdb-cli?ref=badge_large)

@@ -41,6 +41,8 @@ func Output(byteData []byte, options OutputOptions) error {
 		return YamlOutput(byteData, options)
 	case "xml":
 		return XmlOutput(byteData, options)
+	case "csv":
+		return CsvOutput(byteData, options)
 	default:
 		return fmt.Errorf("Unsupported output format: %s", options.Format)
 	}

@@ -123,6 +123,26 @@ func expandToRows(value any, prefix string) ([]map[string]string, []string) {
 }
 
 func expandObjectToRows(obj map[string]any, prefix string, inlineObjects bool) ([]map[string]string, []string) {
+	directScalars, inlinedFields, nestedItems, nestedFound := collectObjectParts(obj, prefix, inlineObjects)
+	contextKeys := sortedKeysOf(directScalars)
+	dataKeys := sortedKeysOf(inlinedFields)
+
+	if !nestedFound {
+		return []map[string]string{makeBaseRow(directScalars, inlinedFields)}, append(contextKeys, dataKeys...)
+	}
+
+	rows, childKeys := buildRowsFromNestedItems(nestedItems, directScalars, inlinedFields)
+	if len(rows) == 0 {
+		return []map[string]string{makeBaseRow(directScalars, inlinedFields)}, append(contextKeys, dataKeys...)
+	}
+
+	// Final column order: parent context keys -> child keys -> parent data keys.
+	orderedKeys := appendUnique(contextKeys, childKeys)
+	orderedKeys = appendUnique(orderedKeys, dataKeys)
+	return rows, orderedKeys
+}
+
+func collectObjectParts(obj map[string]any, prefix string, inlineObjects bool) (map[string]string, map[string]string, []any, bool) {
 	directScalars := make(map[string]string)
 	inlinedFields := make(map[string]string)
 	var nestedItems []any
@@ -132,33 +152,34 @@ func expandObjectToRows(obj map[string]any, prefix string, inlineObjects bool) (
 		fullKey := joinKey(prefix, key)
 		switch v := val.(type) {
 		case []any:
-			if isObjectArray(v) && !nestedFound {
+			if !nestedFound && isObjectArray(v) {
 				nestedItems = v
 				nestedFound = true
-			} else {
-				flattenInto(directScalars, v, fullKey)
+				continue
 			}
+			flattenInto(directScalars, v, fullKey)
 		case map[string]any:
 			if inlineObjects {
 				flattenInto(inlinedFields, v, "")
-			} else {
-				flattenInto(directScalars, v, fullKey)
+				continue
 			}
+			flattenInto(directScalars, v, fullKey)
 		default:
 			flattenInto(directScalars, v, fullKey)
 		}
 	}
 
-	contextKeys := sortedKeysOf(directScalars)
-	dataKeys := sortedKeysOf(inlinedFields)
+	return directScalars, inlinedFields, nestedItems, nestedFound
+}
 
-	if !nestedFound {
-		baseRow := make(map[string]string, len(directScalars)+len(inlinedFields))
-		maps.Copy(baseRow, directScalars)
-		maps.Copy(baseRow, inlinedFields)
-		return []map[string]string{baseRow}, append(contextKeys, dataKeys...)
-	}
+func makeBaseRow(directScalars, inlinedFields map[string]string) map[string]string {
+	baseRow := make(map[string]string, len(directScalars)+len(inlinedFields))
+	maps.Copy(baseRow, directScalars)
+	maps.Copy(baseRow, inlinedFields)
+	return baseRow
+}
 
+func buildRowsFromNestedItems(nestedItems []any, directScalars, inlinedFields map[string]string) ([]map[string]string, []string) {
 	var rows []map[string]string
 	var childKeys []string
 
@@ -178,17 +199,7 @@ func expandObjectToRows(obj map[string]any, prefix string, inlineObjects bool) (
 		}
 	}
 
-	if len(rows) == 0 {
-		baseRow := make(map[string]string, len(directScalars)+len(inlinedFields))
-		maps.Copy(baseRow, directScalars)
-		maps.Copy(baseRow, inlinedFields)
-		return []map[string]string{baseRow}, append(contextKeys, dataKeys...)
-	}
-
-	// Final column order: parent context keys -> child keys -> parent data keys.
-	orderedKeys := appendUnique(contextKeys, childKeys)
-	orderedKeys = appendUnique(orderedKeys, dataKeys)
-	return rows, orderedKeys
+	return rows, childKeys
 }
 
 // isObjectArray returns true only when every element of arr is a JSON object.

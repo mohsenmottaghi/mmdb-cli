@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -91,7 +92,7 @@ func TestDumpMMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "dump with JSONPath filter",
+			name: "dump with legacy JSONPath filter",
 			cfg: func(t *testing.T) *CmdDumpConfig {
 				t.Helper()
 				outFile := filepath.Join(t.TempDir(), "filtered.json")
@@ -128,13 +129,26 @@ func TestDumpMMMDB(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "invalid output extension",
+			name: "invalid output extension without jsonpath",
 			cfg: func(t *testing.T) *CmdDumpConfig {
 				t.Helper()
 				outFile := filepath.Join(t.TempDir(), "output.txt")
 				return &CmdDumpConfig{
 					InputDatabase: testMMDB,
 					OutputFile:    outFile,
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name: "legacy filter requires json extension",
+			cfg: func(t *testing.T) *CmdDumpConfig {
+				t.Helper()
+				outFile := filepath.Join(t.TempDir(), "output.txt")
+				return &CmdDumpConfig{
+					InputDatabase: testMMDB,
+					OutputFile:    outFile,
+					JSONPath:      `{[?(@.registered_country.iso_code=="AU")]}`,
 				}
 			},
 			wantErr: true,
@@ -153,7 +167,7 @@ func TestDumpMMMDB(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "dump with non-matching JSONPath filter",
+			name: "dump with non-matching legacy JSONPath filter",
 			cfg: func(t *testing.T) *CmdDumpConfig {
 				t.Helper()
 				outFile := filepath.Join(t.TempDir(), "empty.json")
@@ -175,6 +189,96 @@ func TestDumpMMMDB(t *testing.T) {
 				dataset, ok := result["dataset"].([]interface{})
 				require.True(t, ok)
 				assert.Empty(t, dataset)
+			},
+		},
+		{
+			name: "template mode - network list to txt file",
+			cfg: func(t *testing.T) *CmdDumpConfig {
+				t.Helper()
+				outFile := filepath.Join(t.TempDir(), "networks.txt")
+				return &CmdDumpConfig{
+					InputDatabase: testMMDB,
+					OutputFile:    outFile,
+					JSONPath:      `{range .items[*]}{.network}{"\n"}{end}`,
+				}
+			},
+			wantErr: false,
+			verify: func(t *testing.T, cfg *CmdDumpConfig) {
+				t.Helper()
+				data, err := os.ReadFile(cfg.OutputFile)
+				require.NoError(t, err)
+
+				output := string(data)
+				assert.NotEmpty(t, output)
+				lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+				assert.Greater(t, len(lines), 0)
+				for _, line := range lines {
+					if line != "" {
+						assert.Contains(t, line, "/")
+					}
+				}
+			},
+		},
+		{
+			name: "template mode - filter and format",
+			cfg: func(t *testing.T) *CmdDumpConfig {
+				t.Helper()
+				outFile := filepath.Join(t.TempDir(), "au-networks.txt")
+				return &CmdDumpConfig{
+					InputDatabase: testMMDB,
+					OutputFile:    outFile,
+					JSONPath:      `{range .items[?(@.record.registered_country.iso_code=="AU")]}{.network}{"\n"}{end}`,
+				}
+			},
+			wantErr: false,
+			verify: func(t *testing.T, cfg *CmdDumpConfig) {
+				t.Helper()
+				data, err := os.ReadFile(cfg.OutputFile)
+				require.NoError(t, err)
+
+				output := string(data)
+				assert.NotEmpty(t, output)
+			},
+		},
+		{
+			name: "template mode - metadata access",
+			cfg: func(t *testing.T) *CmdDumpConfig {
+				t.Helper()
+				outFile := filepath.Join(t.TempDir(), "meta.txt")
+				return &CmdDumpConfig{
+					InputDatabase: testMMDB,
+					OutputFile:    outFile,
+					// maxminddb.Metadata has no json tags, so fields marshal with Go capitalized names.
+					JSONPath: `{.metadata.NodeCount}`,
+				}
+			},
+			wantErr: false,
+			verify: func(t *testing.T, cfg *CmdDumpConfig) {
+				t.Helper()
+				data, err := os.ReadFile(cfg.OutputFile)
+				require.NoError(t, err)
+
+				assert.NotEmpty(t, string(data))
+			},
+		},
+		{
+			name: "template mode - dataset alias",
+			cfg: func(t *testing.T) *CmdDumpConfig {
+				t.Helper()
+				outFile := filepath.Join(t.TempDir(), "dataset.txt")
+				return &CmdDumpConfig{
+					InputDatabase: testMMDB,
+					OutputFile:    outFile,
+					JSONPath:      `{range .dataset[*]}{.network}{"\n"}{end}`,
+				}
+			},
+			wantErr: false,
+			verify: func(t *testing.T, cfg *CmdDumpConfig) {
+				t.Helper()
+				data, err := os.ReadFile(cfg.OutputFile)
+				require.NoError(t, err)
+
+				assert.NotEmpty(t, string(data))
 			},
 		},
 	}

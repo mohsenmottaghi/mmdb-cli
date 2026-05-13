@@ -52,6 +52,21 @@ func TestValidateExpression(t *testing.T) {
 			wantErr:    false,
 		},
 		{
+			name:       "valid range with end",
+			expression: `{range .items[*]}{.network}{"\n"}{end}`,
+			wantErr:    false,
+		},
+		{
+			name:       "valid union",
+			expression: "{['network','record']}",
+			wantErr:    false,
+		},
+		{
+			name:       "valid negative index",
+			expression: "{.items[-1:]}",
+			wantErr:    false,
+		},
+		{
 			name:       "invalid syntax - unclosed brace",
 			expression: "{.country",
 			wantErr:    true,
@@ -77,6 +92,65 @@ func TestValidateExpression(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestDetectMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		expression string
+		want       Mode
+	}{
+		{
+			name:       "legacy filter - simple equality",
+			expression: `{[?(@.registered_country.iso_code=="AU")]}`,
+			want:       ModeLegacyFilter,
+		},
+		{
+			name:       "legacy filter - with spaces inside",
+			expression: `{ [?(@.country.iso_code=="US")] }`,
+			want:       ModeLegacyFilter,
+		},
+		{
+			name:       "legacy filter - compound condition",
+			expression: `{[?(@.country.iso_code=="US" && @.continent.code=="NA")]}`,
+			want:       ModeLegacyFilter,
+		},
+		{
+			name:       "template - simple field access",
+			expression: "{.network}",
+			want:       ModeTemplate,
+		},
+		{
+			name:       "template - items wildcard",
+			expression: "{.items[*].network}",
+			want:       ModeTemplate,
+		},
+		{
+			name:       "template - range with end",
+			expression: `{range .items[*]}{.network}{"\n"}{end}`,
+			want:       ModeTemplate,
+		},
+		{
+			name:       "template - range with inline filter",
+			expression: `{range .items[?(@.record.registered_country.iso_code=="AU")]}{.network}{"\n"}{end}`,
+			want:       ModeTemplate,
+		},
+		{
+			name:       "template - tab-separated fields",
+			expression: `{range .items[*]}{.network}{"\t"}{.record.registered_country.iso_code}{"\n"}{end}`,
+			want:       ModeTemplate,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := DetectMode(tt.expression)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -173,6 +247,113 @@ func TestMatchesRecord(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestExecuteTemplate(t *testing.T) {
+	t.Parallel()
+
+	root := map[string]interface{}{
+		"apiVersion": "mmdb-cli/v1",
+		"kind":       "InspectList",
+		"items": []map[string]interface{}{
+			{
+				"query":   "1.1.1.1",
+				"network": "1.1.1.0/24",
+				"record": map[string]interface{}{
+					"registered_country": map[string]interface{}{
+						"iso_code": "AU",
+					},
+				},
+			},
+			{
+				"query":   "8.8.8.8",
+				"network": "8.8.8.0/24",
+				"record": map[string]interface{}{
+					"registered_country": map[string]interface{}{
+						"iso_code": "US",
+					},
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name       string
+		expression string
+		root       any
+		want       string
+		wantErr    bool
+	}{
+		{
+			name:       "simple field access",
+			expression: "{.apiVersion}",
+			root:       root,
+			want:       "mmdb-cli/v1",
+			wantErr:    false,
+		},
+		{
+			name:       "range over items - network only",
+			expression: `{range .items[*]}{.network}{"\n"}{end}`,
+			root:       root,
+			want:       "1.1.1.0/24\n8.8.8.0/24\n",
+			wantErr:    false,
+		},
+		{
+			name:       "range with tab-separated fields",
+			expression: `{range .items[*]}{.network}{"\t"}{.record.registered_country.iso_code}{"\n"}{end}`,
+			root:       root,
+			want:       "1.1.1.0/24\tAU\n8.8.8.0/24\tUS\n",
+			wantErr:    false,
+		},
+		{
+			name:       "range with inline filter",
+			expression: `{range .items[?(@.record.registered_country.iso_code=="AU")]}{.network}{"\n"}{end}`,
+			root:       root,
+			want:       "1.1.1.0/24\n",
+			wantErr:    false,
+		},
+		{
+			name:       "wildcard field access",
+			expression: "{.items[*].network}",
+			root:       root,
+			want:       "1.1.1.0/24 8.8.8.0/24",
+			wantErr:    false,
+		},
+		{
+			name:       "missing field renders empty - no error",
+			expression: "{.items[0].nonexistent}",
+			root:       root,
+			want:       "",
+			wantErr:    false,
+		},
+		{
+			name:       "no implicit trailing newline",
+			expression: "{.apiVersion}",
+			root:       root,
+			want:       "mmdb-cli/v1",
+			wantErr:    false,
+		},
+		{
+			name:       "invalid expression returns error",
+			expression: "{.unclosed",
+			root:       root,
+			want:       "",
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ExecuteTemplate(tt.expression, tt.root)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, string(got))
 		})
 	}
 }

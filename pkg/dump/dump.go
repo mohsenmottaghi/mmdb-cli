@@ -52,14 +52,31 @@ Structure of the dumped JSON dataset:
 	}
 */
 func DumpMMMDB(cfg *CmdDumpConfig) error {
-
-	filesToCheck := []files.FilesListValidation{
-		{FilePath: cfg.InputDatabase, ExpectedExtension: ".mmdb", ShouldExist: true},
-		{FilePath: cfg.OutputFile, ExpectedExtension: ".json", ShouldExist: false},
+	var mode jsonpath.Mode
+	if cfg.JSONPath != "" {
+		if err := jsonpath.ValidateExpression(cfg.JSONPath); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+		mode = jsonpath.DetectMode(cfg.JSONPath)
 	}
 
-	if err := files.FilesValidation(filesToCheck); err != nil {
-		return err
+	isTemplateMode := cfg.JSONPath != "" && mode == jsonpath.ModeTemplate
+
+	if isTemplateMode {
+		filesToCheck := []files.FilesListValidation{
+			{FilePath: cfg.InputDatabase, ExpectedExtension: ".mmdb", ShouldExist: true},
+		}
+		if err := files.FilesValidation(filesToCheck); err != nil {
+			return err
+		}
+	} else {
+		filesToCheck := []files.FilesListValidation{
+			{FilePath: cfg.InputDatabase, ExpectedExtension: ".mmdb", ShouldExist: true},
+			{FilePath: cfg.OutputFile, ExpectedExtension: ".json", ShouldExist: false},
+		}
+		if err := files.FilesValidation(filesToCheck); err != nil {
+			return err
+		}
 	}
 
 	db, err := maxminddb.Open(cfg.InputDatabase)
@@ -68,8 +85,52 @@ func DumpMMMDB(cfg *CmdDumpConfig) error {
 	}
 	defer db.Close()
 
-	if len(cfg.OutputFile) < 5 || cfg.OutputFile[len(cfg.OutputFile)-5:] != ".json" {
-		return fmt.Errorf("output file must have a .json extension")
+	fmt.Printf("[+] Start dumping %s to %s\n", cfg.InputDatabase, cfg.OutputFile)
+
+	if isTemplateMode {
+		return dumpTemplate(cfg, db)
+	}
+	return dumpLegacy(cfg, db)
+}
+
+func dumpTemplate(cfg *CmdDumpConfig, db *maxminddb.Reader) error {
+	items := make([]map[string]interface{}, 0)
+	availableNetworks := db.Networks(maxminddb.SkipAliasedNetworks)
+	var readCount int
+
+	for availableNetworks.Next() {
+		readCount++
+		record := make(map[string]interface{})
+		subnet, err := availableNetworks.Network(&record)
+		if err != nil {
+			return fmt.Errorf("failed to get record for next subnet: %w", err)
+		}
+		items = append(items, map[string]interface{}{
+			"network": subnet.String(),
+			"record":  record,
+		})
+	}
+
+	metadataBytes, err := json.Marshal(db.Metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+	var metadataInterface interface{}
+	if err := json.Unmarshal(metadataBytes, &metadataInterface); err != nil {
+		return fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
+
+	root := map[string]interface{}{
+		"apiVersion": "mmdb-cli/v1",
+		"kind":       "DumpList",
+		"metadata":   metadataInterface,
+		"items":      items,
+		"dataset":    items,
+	}
+
+	data, err := jsonpath.ExecuteTemplate(cfg.JSONPath, root)
+	if err != nil {
+		return fmt.Errorf("failed to execute JSONPath template: %w", err)
 	}
 
 	outputFile, err := os.Create(cfg.OutputFile)
@@ -78,13 +139,29 @@ func DumpMMMDB(cfg *CmdDumpConfig) error {
 	}
 	defer outputFile.Close()
 
-	fmt.Printf("[+] Start dumping %s to %s\n", cfg.InputDatabase, cfg.OutputFile)
-
-	if cfg.JSONPath != "" {
-		if err := jsonpath.ValidateExpression(cfg.JSONPath); err != nil {
-			return fmt.Errorf("%w", err)
-		}
+	if _, err := outputFile.Write(data); err != nil {
+		return fmt.Errorf("failed to write output: %w", err)
 	}
+
+	fmt.Printf("\r[+] Read %d records\n", readCount)
+
+	outputFileStat, err := outputFile.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to get output file stats: %s - %w", cfg.OutputFile, err)
+	}
+	outputFileSizeMB := float64(outputFileStat.Size()) / 1024 / 1024
+	fmt.Printf("[+] %s file created with size: %.2f MB\n", cfg.OutputFile, outputFileSizeMB)
+	fmt.Println("[+] MMDB Dumped successfully")
+
+	return nil
+}
+
+func dumpLegacy(cfg *CmdDumpConfig, db *maxminddb.Reader) error {
+	outputFile, err := os.Create(cfg.OutputFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %s - %w", cfg.OutputFile, err)
+	}
+	defer outputFile.Close()
 
 	metadataJSON, err := json.Marshal(db.Metadata)
 	if err != nil {

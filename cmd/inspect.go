@@ -17,6 +17,7 @@ limitations under the License.
 package cmd
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/InfraZ/mmdb-cli/pkg/inspect"
@@ -47,7 +48,12 @@ var inspectCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		err = output.Output(inspectResult, outputOptions)
+		if inspectResult.RawOutput {
+			fmt.Print(string(inspectResult.Data))
+			return
+		}
+
+		err = output.Output(inspectResult.Data, outputOptions)
 		if err != nil {
 			log.Fatal(err)
 		}

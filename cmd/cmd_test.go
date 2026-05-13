@@ -199,6 +199,41 @@ func TestUpdateCommand(t *testing.T) {
 	assert.NoError(t, statErr)
 }
 
+func TestInspectCommandJSONPathTemplate(t *testing.T) {
+	output, err := captureAndExecute(t, "inspect", "-i", "../test/inspect.mmdb",
+		"-j", `{range .items[*]}{.network}{"\n"}{end}`, "1.1.1.1")
+	assert.NoError(t, err)
+	assert.Contains(t, output, "1.1.1.1/32")
+	assert.NotContains(t, output, "registered_country")
+}
+
+func TestInspectCommandJSONPathTemplateBypassesFormat(t *testing.T) {
+	// Template mode should print raw output, not YAML/JSON-formatted data.
+	yamlOutput, err := captureAndExecute(t, "inspect", "-i", "../test/inspect.mmdb",
+		"-f", "yaml", "-j", `{range .items[*]}{.network}{"\n"}{end}`, "1.1.1.1")
+	assert.NoError(t, err)
+	// Raw output should not contain YAML structure markers.
+	assert.NotContains(t, yamlOutput, "query:")
+	assert.Contains(t, yamlOutput, "1.1.1.1/32")
+}
+
+func TestDumpCommandTemplateMode(t *testing.T) {
+	dir := t.TempDir()
+	outFile := filepath.Join(dir, "networks.txt")
+
+	output, err := captureAndExecute(t, "dump", "-i", "../test/inspect.mmdb", "-o", outFile,
+		"-j", `{range .items[*]}{.network}{"\n"}{end}`)
+	assert.NoError(t, err)
+	assert.Contains(t, output, "MMDB Dumped successfully")
+
+	_, statErr := os.Stat(outFile)
+	assert.NoError(t, statErr)
+
+	data, readErr := os.ReadFile(outFile)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(data), "/")
+}
+
 func TestSubcommandRegistration(t *testing.T) {
 	subcommands := []string{"version", "metadata", "inspect", "update", "dump", "generate", "verify"}
 	registeredCmds := rootCmd.Commands()

@@ -19,9 +19,21 @@ package jsonpath
 import (
 	"bytes"
 	"fmt"
+	"regexp"
+	"strings"
 
 	k8sjsonpath "k8s.io/client-go/util/jsonpath"
 )
+
+type Mode int
+
+const (
+	ModeLegacyFilter Mode = iota
+	ModeTemplate
+)
+
+// legacyFilterRe matches the top-level record-filter form {[?(...)]}.
+var legacyFilterRe = regexp.MustCompile(`^\{\s*\[\?\(.*\)\]\s*\}$`)
 
 // ValidateExpression parses the expression and returns an error if it is
 // syntactically invalid. Call this once up-front to give users a clear error
@@ -32,6 +44,16 @@ func ValidateExpression(expression string) error {
 		return fmt.Errorf("invalid jsonpath expression: %w", err)
 	}
 	return nil
+}
+
+// DetectMode infers whether expression is a legacy per-record filter or a
+// kubectl-style template. Only the top-level form {[?(...)]} is legacy;
+// everything else is a template.
+func DetectMode(expression string) Mode {
+	if legacyFilterRe.MatchString(strings.TrimSpace(expression)) {
+		return ModeLegacyFilter
+	}
+	return ModeTemplate
 }
 
 // MatchesRecord evaluates a kubectl-style JSONPath filter expression against an
@@ -54,4 +76,22 @@ func MatchesRecord(expression string, record map[string]interface{}) (bool, erro
 		return false, fmt.Errorf("jsonpath execution error: %w", err)
 	}
 	return buf.Len() > 0, nil
+}
+
+// ExecuteTemplate renders expression against root and returns raw bytes exactly
+// as the k8s JSONPath library produces them. No implicit newline is added.
+func ExecuteTemplate(expression string, root any) ([]byte, error) {
+	j := k8sjsonpath.New("template").AllowMissingKeys(true)
+	if err := j.Parse(expression); err != nil {
+		return nil, fmt.Errorf("invalid jsonpath expression: %w", err)
+	}
+	var buf bytes.Buffer
+	if err := j.Execute(&buf, root); err != nil {
+		return nil, fmt.Errorf("jsonpath execution error: %w", err)
+	}
+	data := buf.Bytes()
+	if data == nil {
+		data = []byte{}
+	}
+	return data, nil
 }

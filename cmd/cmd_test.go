@@ -140,13 +140,18 @@ func TestDumpCommand(t *testing.T) {
 	assert.Contains(t, string(data), "v1")
 }
 
-func TestDumpCommandWithJSONPath(t *testing.T) {
+func TestDumpCommandWithJSONPathTemplate(t *testing.T) {
 	dir := t.TempDir()
-	outFile := filepath.Join(dir, "filtered.json")
+	outFile := filepath.Join(dir, "networks.txt")
 
-	output, err := captureAndExecute(t, "dump", "-i", "../test/inspect.mmdb", "-o", outFile, "-j", `{[?(@.registered_country.iso_code=="AU")]}`)
+	output, err := captureAndExecute(t, "dump", "-i", "../test/inspect.mmdb", "-o", outFile,
+		"-f", `jsonpath={range .items[?(@.record.registered_country.iso_code=="AU")]}{.network}{"\n"}{end}`)
 	assert.NoError(t, err)
-	assert.Contains(t, output, "matched")
+	assert.Contains(t, output, "MMDB Dumped successfully")
+
+	data, readErr := os.ReadFile(outFile)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(data), "/")
 }
 
 func TestGenerateCommand(t *testing.T) {
@@ -199,30 +204,20 @@ func TestUpdateCommand(t *testing.T) {
 	assert.NoError(t, statErr)
 }
 
-func TestInspectCommandJSONPathTemplate(t *testing.T) {
+func TestInspectCommandJSONPathFormat(t *testing.T) {
 	output, err := captureAndExecute(t, "inspect", "-i", "../test/inspect.mmdb",
-		"-j", `{range .items[*]}{.network}{"\n"}{end}`, "1.1.1.1")
+		"-f", `jsonpath={range .items[*]}{.network}{"\n"}{end}`, "1.1.1.1")
 	assert.NoError(t, err)
 	assert.Contains(t, output, "1.1.1.1/32")
 	assert.NotContains(t, output, "registered_country")
 }
 
-func TestInspectCommandJSONPathTemplateBypassesFormat(t *testing.T) {
-	// Template mode should print raw output, not YAML/JSON-formatted data.
-	yamlOutput, err := captureAndExecute(t, "inspect", "-i", "../test/inspect.mmdb",
-		"-f", "yaml", "-j", `{range .items[*]}{.network}{"\n"}{end}`, "1.1.1.1")
-	assert.NoError(t, err)
-	// Raw output should not contain YAML structure markers.
-	assert.NotContains(t, yamlOutput, "query:")
-	assert.Contains(t, yamlOutput, "1.1.1.1/32")
-}
-
-func TestDumpCommandTemplateMode(t *testing.T) {
+func TestDumpCommandTemplateFormat(t *testing.T) {
 	dir := t.TempDir()
 	outFile := filepath.Join(dir, "networks.txt")
 
 	output, err := captureAndExecute(t, "dump", "-i", "../test/inspect.mmdb", "-o", outFile,
-		"-j", `{range .items[*]}{.network}{"\n"}{end}`)
+		"-f", `jsonpath={range .items[*]}{.network}{"\n"}{end}`)
 	assert.NoError(t, err)
 	assert.Contains(t, output, "MMDB Dumped successfully")
 

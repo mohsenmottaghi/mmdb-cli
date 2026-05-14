@@ -19,8 +19,10 @@ package cmd
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/InfraZ/mmdb-cli/pkg/inspect"
+	"github.com/InfraZ/mmdb-cli/pkg/jsonpath"
 	"github.com/InfraZ/mmdb-cli/pkg/output"
 
 	"github.com/spf13/cobra"
@@ -30,6 +32,8 @@ const (
 	inspectCmdName      = "inspect"
 	inspectCmdShortDesc = "Inspect an IP address or CIDR in the MMDB file"
 	inspectCmdLongDesc  = `This command allows you to inspect an IP address or CIDR in the MMDB file`
+
+	jsonpathFormatPrefix = "jsonpath="
 )
 
 var cmdInspectConfig inspect.CmdInspectConfig
@@ -40,8 +44,15 @@ var inspectCmd = &cobra.Command{
 	Short: inspectCmdShortDesc,
 	Long:  inspectCmdLongDesc + "\n\nArgs:\n  [IP/CIDR]  IP address or CIDR to inspect in the MMDB file, It can be a single or multiple IP addresses or CIDRs",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Set the inputs
 		cmdInspectConfig.Inputs = cmd.Flags().Args()
+
+		if strings.HasPrefix(outputOptions.Format, jsonpathFormatPrefix) {
+			expr := strings.TrimPrefix(outputOptions.Format, jsonpathFormatPrefix)
+			if jsonpath.IsLegacyTopLevelFilter(expr) {
+				log.Fatalf("top-level filter %q is not supported against the template root; use '{.items[?(...)]}' or '{range .items[?(...)]}...{end}'", expr)
+			}
+			cmdInspectConfig.JSONPath = expr
+		}
 
 		inspectResult, err := inspect.InspectInMMDB(cmdInspectConfig)
 		if err != nil {
@@ -61,13 +72,10 @@ var inspectCmd = &cobra.Command{
 }
 
 func init() {
-	// Add flags to the inspect command
 	inspectCmd.Flags().StringVarP(&cmdInspectConfig.InputFile, "input", "i", "", "Input path of the MMDB file")
-	inspectCmd.Flags().StringVarP(&outputOptions.Format, "format", "f", "yaml", "Output format (yaml, json, json-pretty, xml, csv)")
-	inspectCmd.Flags().StringVarP(&cmdInspectConfig.JSONPath, "jsonpath", "j", "", `JSONPath filter applied to each record (e.g. '{[?(@.country.iso_code=="US")]}')`)
+	inspectCmd.Flags().StringVarP(&outputOptions.Format, "format", "f", "yaml", `Output format (yaml, json, json-pretty, xml, csv, jsonpath='{...}')`)
 
 	inspectCmd.Args = cobra.MinimumNArgs(1)
 
-	// Mark required flags
 	inspectCmd.MarkFlagRequired("input")
 }

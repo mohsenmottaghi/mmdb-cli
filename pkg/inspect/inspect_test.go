@@ -220,7 +220,7 @@ func TestInspectInMMDB(t *testing.T) {
 		verify  func(t *testing.T, result InspectResult)
 	}{
 		{
-			name: "single IPv4 lookup",
+			name: "single IPv4 lookup - no JSONPath",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.1.1.1"},
@@ -239,7 +239,7 @@ func TestInspectInMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "CIDR range lookup",
+			name: "CIDR range lookup - no JSONPath",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.0.0.0/8"},
@@ -257,7 +257,7 @@ func TestInspectInMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple inputs",
+			name: "multiple inputs - no JSONPath",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.1.1.1", "1.0.0.0/24"},
@@ -272,45 +272,7 @@ func TestInspectInMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "legacy filter - matching",
-			cfg: CmdInspectConfig{
-				InputFile: testMMDB,
-				Inputs:    []string{"1.1.1.1"},
-				JSONPath:  `{[?(@.registered_country.iso_code=="AU")]}`,
-			},
-			wantErr: false,
-			verify: func(t *testing.T, result InspectResult) {
-				t.Helper()
-				assert.False(t, result.RawOutput)
-				var parsed []map[string]interface{}
-				require.NoError(t, json.Unmarshal(result.Data, &parsed))
-				assert.Len(t, parsed, 1)
-				records, ok := parsed[0]["records"].([]interface{})
-				require.True(t, ok)
-				assert.Greater(t, len(records), 0)
-			},
-		},
-		{
-			name: "legacy filter - non-matching",
-			cfg: CmdInspectConfig{
-				InputFile: testMMDB,
-				Inputs:    []string{"1.1.1.1"},
-				JSONPath:  `{[?(@.registered_country.iso_code=="ZZ")]}`,
-			},
-			wantErr: false,
-			verify: func(t *testing.T, result InspectResult) {
-				t.Helper()
-				assert.False(t, result.RawOutput)
-				var parsed []map[string]interface{}
-				require.NoError(t, json.Unmarshal(result.Data, &parsed))
-				assert.Len(t, parsed, 1)
-				records, ok := parsed[0]["records"].([]interface{})
-				require.True(t, ok)
-				assert.Empty(t, records)
-			},
-		},
-		{
-			name: "template mode - network list",
+			name: "template - network list",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.1.1.1"},
@@ -326,7 +288,7 @@ func TestInspectInMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "template mode - flat items with query field",
+			name: "template - flat items with query field",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.1.1.1"},
@@ -343,7 +305,7 @@ func TestInspectInMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "template mode - filter and format",
+			name: "template - filter and format",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.0.0.0/8"},
@@ -363,7 +325,7 @@ func TestInspectInMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "template mode - missing field renders empty without error",
+			name: "template - missing field renders empty without error",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.1.1.1"},
@@ -402,7 +364,7 @@ func TestInspectInMMDB(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "IP not in database",
+			name: "IP not in database - no JSONPath",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"192.168.1.1"},

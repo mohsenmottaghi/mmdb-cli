@@ -52,17 +52,12 @@ Structure of the dumped JSON dataset:
 	}
 */
 func DumpMMMDB(cfg *CmdDumpConfig) error {
-	var mode jsonpath.Mode
-	if cfg.JSONPath != "" {
+	isTemplateMode := cfg.JSONPath != ""
+
+	if isTemplateMode {
 		if err := jsonpath.ValidateExpression(cfg.JSONPath); err != nil {
 			return fmt.Errorf("%w", err)
 		}
-		mode = jsonpath.DetectMode(cfg.JSONPath)
-	}
-
-	isTemplateMode := cfg.JSONPath != "" && mode == jsonpath.ModeTemplate
-
-	if isTemplateMode {
 		filesToCheck := []files.FilesListValidation{
 			{FilePath: cfg.InputDatabase, ExpectedExtension: ".mmdb", ShouldExist: true},
 		}
@@ -172,7 +167,6 @@ func dumpLegacy(cfg *CmdDumpConfig, db *maxminddb.Reader) error {
 	}
 
 	encoder := json.NewEncoder(outputFile)
-	var readPosition int
 	var dumpPosition int
 	firstRecord := true
 
@@ -181,25 +175,11 @@ func dumpLegacy(cfg *CmdDumpConfig, db *maxminddb.Reader) error {
 	)
 
 	for availableNetworks.Next() {
-		readPosition++
 		record := make(map[string]interface{})
 
 		subnet, err := availableNetworks.Network(&record)
 		if err != nil {
 			return fmt.Errorf("failed to get record for next subnet: %w", err)
-		}
-
-		if cfg.JSONPath != "" {
-			match, err := jsonpath.MatchesRecord(cfg.JSONPath, record)
-			if err != nil {
-				return fmt.Errorf("failed to evaluate JSONPath for network %s: %w", subnet.String(), err)
-			}
-			if !match {
-				if !cfg.Verbose {
-					fmt.Printf("\r[-] Read records: %d, Matched records: %d", readPosition, dumpPosition)
-				}
-				continue
-			}
 		}
 
 		dumpPosition++
@@ -221,8 +201,6 @@ func dumpLegacy(cfg *CmdDumpConfig, db *maxminddb.Reader) error {
 
 		if cfg.Verbose {
 			fmt.Printf("[-] Dumping record %d for network %s - data: %v\n", dumpPosition, subnet.String(), record)
-		} else if cfg.JSONPath != "" {
-			fmt.Printf("\r[-] Read records: %d, Matched records: %d", readPosition, dumpPosition)
 		} else {
 			fmt.Printf("\r[-] Dumped records: %d", dumpPosition)
 		}
@@ -232,11 +210,7 @@ func dumpLegacy(cfg *CmdDumpConfig, db *maxminddb.Reader) error {
 		return fmt.Errorf("failed to write output footer: %w", err)
 	}
 
-	if cfg.JSONPath != "" {
-		fmt.Printf("\r[+] Read %d records, matched %d records\n", readPosition, dumpPosition)
-	} else {
-		fmt.Printf("\r[+] Total %d records dumped successfully\n", dumpPosition)
-	}
+	fmt.Printf("\r[+] Total %d records dumped successfully\n", dumpPosition)
 
 	outputFileStat, err := outputFile.Stat()
 	if err != nil {

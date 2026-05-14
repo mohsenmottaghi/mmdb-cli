@@ -25,15 +25,17 @@ import (
 	k8sjsonpath "k8s.io/client-go/util/jsonpath"
 )
 
-type Mode int
-
-const (
-	ModeLegacyFilter Mode = iota
-	ModeTemplate
-)
-
-// legacyFilterRe matches the top-level record-filter form {[?(...)]}.
+// legacyFilterRe matches the top-level record-filter form `{[?(...)]}`.
+// This form requires an array root and does not work against the
+// kubectl-style template root used by inspect/dump.
 var legacyFilterRe = regexp.MustCompile(`^\{\s*\[\?\(.*\)\]\s*\}$`)
+
+// IsLegacyTopLevelFilter reports whether expression is the top-level
+// `{[?(...)]}` form. Callers should reject it with a helpful migration
+// message pointing at `{.items[?(...)]}` or `{range .items[?(...)]}...{end}`.
+func IsLegacyTopLevelFilter(expression string) bool {
+	return legacyFilterRe.MatchString(strings.TrimSpace(expression))
+}
 
 // ValidateExpression parses the expression and returns an error if it is
 // syntactically invalid. Call this once up-front to give users a clear error
@@ -44,38 +46,6 @@ func ValidateExpression(expression string) error {
 		return fmt.Errorf("invalid jsonpath expression: %w", err)
 	}
 	return nil
-}
-
-// DetectMode infers whether expression is a legacy per-record filter or a
-// kubectl-style template. Only the top-level form {[?(...)]} is legacy;
-// everything else is a template.
-func DetectMode(expression string) Mode {
-	if legacyFilterRe.MatchString(strings.TrimSpace(expression)) {
-		return ModeLegacyFilter
-	}
-	return ModeTemplate
-}
-
-// MatchesRecord evaluates a kubectl-style JSONPath filter expression against an
-// MMDB record. The expression is applied to a single-element slice that wraps
-// the record, so @ refers directly to the record's fields:
-//
-//	{[?(@.country.iso_code=="US")]}
-//
-// Returns true when the expression produces non-empty output (i.e. the filter
-// matched), false when the output is empty (no match), and an error when the
-// expression itself is invalid.
-func MatchesRecord(expression string, record map[string]interface{}) (bool, error) {
-	j := k8sjsonpath.New("filter").AllowMissingKeys(true)
-	if err := j.Parse(expression); err != nil {
-		return false, fmt.Errorf("invalid jsonpath expression: %w", err)
-	}
-	var buf bytes.Buffer
-	// Wrap record in a slice so filter syntax [?(@.field==...)] can iterate.
-	if err := j.Execute(&buf, []interface{}{record}); err != nil {
-		return false, fmt.Errorf("jsonpath execution error: %w", err)
-	}
-	return buf.Len() > 0, nil
 }
 
 // ExecuteTemplate renders expression against root and returns raw bytes exactly

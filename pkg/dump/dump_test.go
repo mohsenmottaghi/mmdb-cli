@@ -92,31 +92,6 @@ func TestDumpMMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "dump with legacy JSONPath filter",
-			cfg: func(t *testing.T) *CmdDumpConfig {
-				t.Helper()
-				outFile := filepath.Join(t.TempDir(), "filtered.json")
-				return &CmdDumpConfig{
-					InputDatabase: testMMDB,
-					OutputFile:    outFile,
-					JSONPath:      `{[?(@.registered_country.iso_code=="AU")]}`,
-				}
-			},
-			wantErr: false,
-			verify: func(t *testing.T, cfg *CmdDumpConfig) {
-				t.Helper()
-				data, err := os.ReadFile(cfg.OutputFile)
-				require.NoError(t, err)
-
-				var result map[string]interface{}
-				require.NoError(t, json.Unmarshal(data, &result))
-
-				dataset, ok := result["dataset"].([]interface{})
-				require.True(t, ok)
-				assert.Greater(t, len(dataset), 0)
-			},
-		},
-		{
 			name: "invalid input path",
 			cfg: func(t *testing.T) *CmdDumpConfig {
 				t.Helper()
@@ -141,23 +116,10 @@ func TestDumpMMMDB(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "legacy filter requires json extension",
-			cfg: func(t *testing.T) *CmdDumpConfig {
-				t.Helper()
-				outFile := filepath.Join(t.TempDir(), "output.txt")
-				return &CmdDumpConfig{
-					InputDatabase: testMMDB,
-					OutputFile:    outFile,
-					JSONPath:      `{[?(@.registered_country.iso_code=="AU")]}`,
-				}
-			},
-			wantErr: true,
-		},
-		{
 			name: "invalid JSONPath expression",
 			cfg: func(t *testing.T) *CmdDumpConfig {
 				t.Helper()
-				outFile := filepath.Join(t.TempDir(), "output.json")
+				outFile := filepath.Join(t.TempDir(), "output.txt")
 				return &CmdDumpConfig{
 					InputDatabase: testMMDB,
 					OutputFile:    outFile,
@@ -167,32 +129,7 @@ func TestDumpMMMDB(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "dump with non-matching legacy JSONPath filter",
-			cfg: func(t *testing.T) *CmdDumpConfig {
-				t.Helper()
-				outFile := filepath.Join(t.TempDir(), "empty.json")
-				return &CmdDumpConfig{
-					InputDatabase: testMMDB,
-					OutputFile:    outFile,
-					JSONPath:      `{[?(@.registered_country.iso_code=="ZZ")]}`,
-				}
-			},
-			wantErr: false,
-			verify: func(t *testing.T, cfg *CmdDumpConfig) {
-				t.Helper()
-				data, err := os.ReadFile(cfg.OutputFile)
-				require.NoError(t, err)
-
-				var result map[string]interface{}
-				require.NoError(t, json.Unmarshal(data, &result))
-
-				dataset, ok := result["dataset"].([]interface{})
-				require.True(t, ok)
-				assert.Empty(t, dataset)
-			},
-		},
-		{
-			name: "template mode - network list to txt file",
+			name: "template - network list to txt file",
 			cfg: func(t *testing.T) *CmdDumpConfig {
 				t.Helper()
 				outFile := filepath.Join(t.TempDir(), "networks.txt")
@@ -220,7 +157,7 @@ func TestDumpMMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "template mode - filter and format",
+			name: "template - filter and format",
 			cfg: func(t *testing.T) *CmdDumpConfig {
 				t.Helper()
 				outFile := filepath.Join(t.TempDir(), "au-networks.txt")
@@ -241,7 +178,7 @@ func TestDumpMMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "template mode - metadata access",
+			name: "template - metadata access",
 			cfg: func(t *testing.T) *CmdDumpConfig {
 				t.Helper()
 				outFile := filepath.Join(t.TempDir(), "meta.txt")
@@ -262,7 +199,7 @@ func TestDumpMMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "template mode - dataset alias",
+			name: "template - dataset alias",
 			cfg: func(t *testing.T) *CmdDumpConfig {
 				t.Helper()
 				outFile := filepath.Join(t.TempDir(), "dataset.txt")

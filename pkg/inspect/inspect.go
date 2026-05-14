@@ -96,12 +96,10 @@ func InspectInMMDB(cfg CmdInspectConfig) (InspectResult, error) {
 		return InspectResult{}, err
 	}
 
-	var mode jsonpath.Mode
 	if cfg.JSONPath != "" {
 		if err := jsonpath.ValidateExpression(cfg.JSONPath); err != nil {
 			return InspectResult{}, fmt.Errorf("invalid JSONPath expression: %w", err)
 		}
-		mode = jsonpath.DetectMode(cfg.JSONPath)
 	}
 
 	queryResults := make([]inspectQueryResult, 0, len(cfg.Inputs))
@@ -138,25 +136,10 @@ func InspectInMMDB(cfg CmdInspectConfig) (InspectResult, error) {
 			})
 		}
 
-		if cfg.JSONPath != "" && mode == jsonpath.ModeLegacyFilter {
-			filtered := make([]map[string]interface{}, 0)
-			for _, entry := range records {
-				rec, _ := entry["record"].(map[string]interface{})
-				match, err := jsonpath.MatchesRecord(cfg.JSONPath, rec)
-				if err != nil {
-					return InspectResult{}, fmt.Errorf("failed to evaluate JSONPath expression: %w", err)
-				}
-				if match {
-					filtered = append(filtered, entry)
-				}
-			}
-			records = filtered
-		}
-
 		queryResults = append(queryResults, inspectQueryResult{query: input, records: records})
 	}
 
-	if cfg.JSONPath != "" && mode == jsonpath.ModeTemplate {
+	if cfg.JSONPath != "" {
 		items := make([]map[string]interface{}, 0)
 		queries := make([]map[string]interface{}, 0, len(queryResults))
 		for _, qr := range queryResults {
@@ -187,7 +170,6 @@ func InspectInMMDB(cfg CmdInspectConfig) (InspectResult, error) {
 		return InspectResult{Data: data, RawOutput: true}, nil
 	}
 
-	// No JSONPath or legacy filter: return the current public shape.
 	result := make([]map[string]interface{}, 0, len(queryResults))
 	for _, qr := range queryResults {
 		result = append(result, map[string]interface{}{

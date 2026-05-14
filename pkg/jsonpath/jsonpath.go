@@ -19,23 +19,9 @@ package jsonpath
 import (
 	"bytes"
 	"fmt"
-	"regexp"
-	"strings"
 
 	k8sjsonpath "k8s.io/client-go/util/jsonpath"
 )
-
-// legacyFilterRe matches the top-level record-filter form `{[?(...)]}`.
-// This form requires an array root and does not work against the
-// kubectl-style template root used by inspect/dump.
-var legacyFilterRe = regexp.MustCompile(`^\{\s*\[\?\(.*\)\]\s*\}$`)
-
-// IsLegacyTopLevelFilter reports whether expression is the top-level
-// `{[?(...)]}` form. Callers should reject it with a helpful migration
-// message pointing at `{.items[?(...)]}` or `{range .items[?(...)]}...{end}`.
-func IsLegacyTopLevelFilter(expression string) bool {
-	return legacyFilterRe.MatchString(strings.TrimSpace(expression))
-}
 
 // ValidateExpression parses the expression and returns an error if it is
 // syntactically invalid. Call this once up-front to give users a clear error

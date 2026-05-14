@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/InfraZ/mmdb-cli/pkg/dump"
-	"github.com/InfraZ/mmdb-cli/pkg/jsonpath"
 	"github.com/spf13/cobra"
 )
 
@@ -46,11 +45,7 @@ var dumpCmd = &cobra.Command{
 		case dumpFormat == "json":
 			cmdDumpConfig.JSONPath = ""
 		case strings.HasPrefix(dumpFormat, jsonpathFormatPrefix):
-			expr := strings.TrimPrefix(dumpFormat, jsonpathFormatPrefix)
-			if jsonpath.IsLegacyTopLevelFilter(expr) {
-				log.Fatalf("top-level filter %q is not supported against the template root; use '{.items[?(...)]}' or '{range .items[?(...)]}...{end}'", expr)
-			}
-			cmdDumpConfig.JSONPath = expr
+			cmdDumpConfig.JSONPath = strings.TrimPrefix(dumpFormat, jsonpathFormatPrefix)
 		default:
 			log.Fatalf("unsupported output format: %s (supported: json, jsonpath='{...}')", dumpFormat)
 		}

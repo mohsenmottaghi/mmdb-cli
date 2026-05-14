@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"github.com/InfraZ/mmdb-cli/pkg/inspect"
-	"github.com/InfraZ/mmdb-cli/pkg/jsonpath"
 	"github.com/InfraZ/mmdb-cli/pkg/output"
 
 	"github.com/spf13/cobra"
@@ -47,11 +46,7 @@ var inspectCmd = &cobra.Command{
 		cmdInspectConfig.Inputs = cmd.Flags().Args()
 
 		if strings.HasPrefix(outputOptions.Format, jsonpathFormatPrefix) {
-			expr := strings.TrimPrefix(outputOptions.Format, jsonpathFormatPrefix)
-			if jsonpath.IsLegacyTopLevelFilter(expr) {
-				log.Fatalf("top-level filter %q is not supported against the template root; use '{.items[?(...)]}' or '{range .items[?(...)]}...{end}'", expr)
-			}
-			cmdInspectConfig.JSONPath = expr
+			cmdInspectConfig.JSONPath = strings.TrimPrefix(outputOptions.Format, jsonpathFormatPrefix)
 		}
 
 		inspectResult, err := inspect.InspectInMMDB(cmdInspectConfig)

@@ -33,6 +33,14 @@ type CmdInspectConfig struct {
 	JSONPath  string
 }
 
+// InspectResult holds the output of InspectInMMDB. When RawOutput is true,
+// Data contains raw JSONPath template output and should be printed directly.
+// When false, Data is JSON and should go through output.Output.
+type InspectResult struct {
+	Data      []byte
+	RawOutput bool
+}
+
 func determineLookupNetwork(input string) (string, error) {
 	var lookupNetwork string
 
@@ -77,81 +85,102 @@ func mmdbNetworksWithin(reader *maxminddb.Reader, query *net.IPNet) *maxminddb.N
 	return networksList
 }
 
-func InspectInMMDB(cfg CmdInspectConfig) ([]byte, error) {
+type inspectQueryResult struct {
+	query   string
+	records []map[string]interface{}
+}
 
+func InspectInMMDB(cfg CmdInspectConfig) (InspectResult, error) {
 	reader, err := mmdbReader(cfg.InputFile)
 	if err != nil {
-		return nil, err
+		return InspectResult{}, err
 	}
-
-	inspectInMmdbResult := []map[string]interface{}{}
 
 	if cfg.JSONPath != "" {
 		if err := jsonpath.ValidateExpression(cfg.JSONPath); err != nil {
-			return nil, fmt.Errorf("invalid JSONPath expression: %w", err)
+			return InspectResult{}, fmt.Errorf("invalid JSONPath expression: %w", err)
 		}
 	}
 
+	queryResults := make([]inspectQueryResult, 0, len(cfg.Inputs))
+
 	for _, input := range cfg.Inputs {
-
-		inspectInMmdbResult = append(inspectInMmdbResult, map[string]interface{}{
-			"query": input,
-		})
-
 		lookupNetwork, err := determineLookupNetwork(input)
 		if err != nil {
-			return nil, fmt.Errorf("invalid input: %s", input)
+			return InspectResult{}, fmt.Errorf("invalid input: %s", input)
 		}
 
 		_, netIPNet, err := net.ParseCIDR(lookupNetwork)
 		if err != nil {
-			return nil, fmt.Errorf("invalid input: %s", input)
+			return InspectResult{}, fmt.Errorf("invalid input: %s", input)
 		}
 
 		inputNetworks := mmdbNetworksWithin(reader, netIPNet)
+		records := make([]map[string]interface{}, 0)
 
-		recordsResults := []map[string]interface{}{}
 		for inputNetworks.Next() {
 			var anyNetwork any
 			address, err := inputNetworks.Network(&anyNetwork)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get network: %w", err)
+				return InspectResult{}, fmt.Errorf("failed to get network: %w", err)
 			}
 
 			record, err := mmdbLookup(reader, address.IP)
 			if err != nil {
-				return nil, fmt.Errorf("failed to lookup record: %w", err)
+				return InspectResult{}, fmt.Errorf("failed to lookup record: %w", err)
 			}
 
-			recordsResults = append(recordsResults, map[string]interface{}{
+			records = append(records, map[string]interface{}{
 				"network": address.String(),
 				"record":  record,
 			})
 		}
 
-		if cfg.JSONPath != "" {
-			filtered := []map[string]interface{}{}
-			for _, entry := range recordsResults {
-				record, _ := entry["record"].(map[string]interface{})
-				match, err := jsonpath.MatchesRecord(cfg.JSONPath, record)
-				if err != nil {
-					return nil, fmt.Errorf("failed to evaluate JSONPath expression: %w", err)
-				}
-				if match {
-					filtered = append(filtered, entry)
-				}
+		queryResults = append(queryResults, inspectQueryResult{query: input, records: records})
+	}
+
+	if cfg.JSONPath != "" {
+		items := make([]map[string]interface{}, 0)
+		queries := make([]map[string]interface{}, 0, len(queryResults))
+		for _, qr := range queryResults {
+			for _, entry := range qr.records {
+				items = append(items, map[string]interface{}{
+					"query":   qr.query,
+					"network": entry["network"],
+					"record":  entry["record"],
+				})
 			}
-			recordsResults = filtered
+			queries = append(queries, map[string]interface{}{
+				"query":   qr.query,
+				"records": qr.records,
+			})
 		}
 
-		inspectInMmdbResult[len(inspectInMmdbResult)-1]["records"] = recordsResults
+		root := map[string]interface{}{
+			"apiVersion": "mmdb-cli/v1",
+			"kind":       "InspectList",
+			"items":      items,
+			"queries":    queries,
+		}
 
+		data, err := jsonpath.ExecuteTemplate(cfg.JSONPath, root)
+		if err != nil {
+			return InspectResult{}, fmt.Errorf("failed to execute JSONPath template: %w", err)
+		}
+		return InspectResult{Data: data, RawOutput: true}, nil
 	}
 
-	inspectInMmdbResultJson, err := json.Marshal(inspectInMmdbResult)
+	result := make([]map[string]interface{}, 0, len(queryResults))
+	for _, qr := range queryResults {
+		result = append(result, map[string]interface{}{
+			"query":   qr.query,
+			"records": qr.records,
+		})
+	}
+
+	jsonData, err := json.Marshal(result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal result: %w", err)
+		return InspectResult{}, fmt.Errorf("failed to marshal result: %w", err)
 	}
-
-	return inspectInMmdbResultJson, nil
+	return InspectResult{Data: jsonData, RawOutput: false}, nil
 }

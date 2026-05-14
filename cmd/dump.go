@@ -18,12 +18,16 @@ package cmd
 
 import (
 	"log"
+	"strings"
 
 	"github.com/InfraZ/mmdb-cli/pkg/dump"
 	"github.com/spf13/cobra"
 )
 
-var cmdDumpConfig dump.CmdDumpConfig
+var (
+	cmdDumpConfig dump.CmdDumpConfig
+	dumpFormat    string
+)
 
 const (
 	dumpCmdName      = "dump"
@@ -37,6 +41,15 @@ var dumpCmd = &cobra.Command{
 	Short: dumpCmdShortDesc,
 	Long:  dumpCmdLongDesc,
 	Run: func(cmd *cobra.Command, args []string) {
+		switch {
+		case dumpFormat == "json":
+			cmdDumpConfig.JSONPath = ""
+		case strings.HasPrefix(dumpFormat, jsonpathFormatPrefix):
+			cmdDumpConfig.JSONPath = strings.TrimPrefix(dumpFormat, jsonpathFormatPrefix)
+		default:
+			log.Fatalf("unsupported output format: %s (supported: json, jsonpath='{...}')", dumpFormat)
+		}
+
 		err := dump.DumpMMMDB(&cmdDumpConfig)
 		if err != nil {
 			log.Fatal(err)
@@ -45,13 +58,11 @@ var dumpCmd = &cobra.Command{
 }
 
 func init() {
-	// Add flags to the update command
 	dumpCmd.Flags().StringVarP(&cmdDumpConfig.InputDatabase, "input", "i", "", "Input path of the MMDB file")
-	dumpCmd.Flags().StringVarP(&cmdDumpConfig.OutputFile, "output", "o", "", "Output path of the output JSON dataset file (must have a .json extension)")
+	dumpCmd.Flags().StringVarP(&cmdDumpConfig.OutputFile, "output", "o", "", "Output path of the output file")
 	dumpCmd.Flags().BoolVarP(&cmdDumpConfig.Verbose, "verbose", "v", false, "Enable verbose mode")
-	dumpCmd.Flags().StringVarP(&cmdDumpConfig.JSONPath, "jsonpath", "j", "", `JSONPath filter applied to each record (e.g. '{[?(@.country.iso_code=="US")]}')`)
+	dumpCmd.Flags().StringVarP(&dumpFormat, "format", "f", "json", `Output format (json, jsonpath='{...}')`)
 
-	// Mark required flags
 	dumpCmd.MarkFlagRequired("input")
 	dumpCmd.MarkFlagRequired("output")
 }

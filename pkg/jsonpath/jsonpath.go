@@ -34,24 +34,20 @@ func ValidateExpression(expression string) error {
 	return nil
 }
 
-// MatchesRecord evaluates a kubectl-style JSONPath filter expression against an
-// MMDB record. The expression is applied to a single-element slice that wraps
-// the record, so @ refers directly to the record's fields:
-//
-//	{[?(@.country.iso_code=="US")]}
-//
-// Returns true when the expression produces non-empty output (i.e. the filter
-// matched), false when the output is empty (no match), and an error when the
-// expression itself is invalid.
-func MatchesRecord(expression string, record map[string]interface{}) (bool, error) {
-	j := k8sjsonpath.New("filter").AllowMissingKeys(true)
+// ExecuteTemplate renders expression against root and returns raw bytes exactly
+// as the k8s JSONPath library produces them. No implicit newline is added.
+func ExecuteTemplate(expression string, root any) ([]byte, error) {
+	j := k8sjsonpath.New("template").AllowMissingKeys(true)
 	if err := j.Parse(expression); err != nil {
-		return false, fmt.Errorf("invalid jsonpath expression: %w", err)
+		return nil, fmt.Errorf("invalid jsonpath expression: %w", err)
 	}
 	var buf bytes.Buffer
-	// Wrap record in a slice so filter syntax [?(@.field==...)] can iterate.
-	if err := j.Execute(&buf, []interface{}{record}); err != nil {
-		return false, fmt.Errorf("jsonpath execution error: %w", err)
+	if err := j.Execute(&buf, root); err != nil {
+		return nil, fmt.Errorf("jsonpath execution error: %w", err)
 	}
-	return buf.Len() > 0, nil
+	data := buf.Bytes()
+	if data == nil {
+		data = []byte{}
+	}
+	return data, nil
 }

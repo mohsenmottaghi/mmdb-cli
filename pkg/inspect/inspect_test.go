@@ -19,6 +19,7 @@ package inspect
 import (
 	"encoding/json"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -216,19 +217,20 @@ func TestInspectInMMDB(t *testing.T) {
 		name    string
 		cfg     CmdInspectConfig
 		wantErr bool
-		verify  func(t *testing.T, result []byte)
+		verify  func(t *testing.T, result InspectResult)
 	}{
 		{
-			name: "single IPv4 lookup",
+			name: "single IPv4 lookup - no JSONPath",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.1.1.1"},
 			},
 			wantErr: false,
-			verify: func(t *testing.T, result []byte) {
+			verify: func(t *testing.T, result InspectResult) {
 				t.Helper()
+				assert.False(t, result.RawOutput)
 				var parsed []map[string]interface{}
-				require.NoError(t, json.Unmarshal(result, &parsed))
+				require.NoError(t, json.Unmarshal(result.Data, &parsed))
 				assert.Len(t, parsed, 1)
 				assert.Equal(t, "1.1.1.1", parsed[0]["query"])
 				records, ok := parsed[0]["records"].([]interface{})
@@ -237,16 +239,17 @@ func TestInspectInMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "CIDR range lookup",
+			name: "CIDR range lookup - no JSONPath",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.0.0.0/8"},
 			},
 			wantErr: false,
-			verify: func(t *testing.T, result []byte) {
+			verify: func(t *testing.T, result InspectResult) {
 				t.Helper()
+				assert.False(t, result.RawOutput)
 				var parsed []map[string]interface{}
-				require.NoError(t, json.Unmarshal(result, &parsed))
+				require.NoError(t, json.Unmarshal(result.Data, &parsed))
 				assert.Len(t, parsed, 1)
 				records, ok := parsed[0]["records"].([]interface{})
 				require.True(t, ok)
@@ -254,53 +257,85 @@ func TestInspectInMMDB(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple inputs",
+			name: "multiple inputs - no JSONPath",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.1.1.1", "1.0.0.0/24"},
 			},
 			wantErr: false,
-			verify: func(t *testing.T, result []byte) {
+			verify: func(t *testing.T, result InspectResult) {
 				t.Helper()
+				assert.False(t, result.RawOutput)
 				var parsed []map[string]interface{}
-				require.NoError(t, json.Unmarshal(result, &parsed))
+				require.NoError(t, json.Unmarshal(result.Data, &parsed))
 				assert.Len(t, parsed, 2)
 			},
 		},
 		{
-			name: "with JSONPath filter - matching",
+			name: "template - network list",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.1.1.1"},
-				JSONPath:  `{[?(@.registered_country.iso_code=="AU")]}`,
+				JSONPath:  `{range .items[*]}{.network}{"\n"}{end}`,
 			},
 			wantErr: false,
-			verify: func(t *testing.T, result []byte) {
+			verify: func(t *testing.T, result InspectResult) {
 				t.Helper()
-				var parsed []map[string]interface{}
-				require.NoError(t, json.Unmarshal(result, &parsed))
-				assert.Len(t, parsed, 1)
-				records, ok := parsed[0]["records"].([]interface{})
-				require.True(t, ok)
-				assert.Greater(t, len(records), 0)
+				assert.True(t, result.RawOutput)
+				output := string(result.Data)
+				assert.Contains(t, output, "1.1.1.1/32")
+				assert.Contains(t, output, "\n")
 			},
 		},
 		{
-			name: "with JSONPath filter - non-matching",
+			name: "template - flat items with query field",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"1.1.1.1"},
-				JSONPath:  `{[?(@.registered_country.iso_code=="ZZ")]}`,
+				JSONPath:  `{range .items[*]}{.query}{"\t"}{.network}{"\n"}{end}`,
 			},
 			wantErr: false,
-			verify: func(t *testing.T, result []byte) {
+			verify: func(t *testing.T, result InspectResult) {
 				t.Helper()
-				var parsed []map[string]interface{}
-				require.NoError(t, json.Unmarshal(result, &parsed))
-				assert.Len(t, parsed, 1)
-				records, ok := parsed[0]["records"].([]interface{})
-				require.True(t, ok)
-				assert.Empty(t, records)
+				assert.True(t, result.RawOutput)
+				output := string(result.Data)
+				assert.Contains(t, output, "1.1.1.1")
+				assert.Contains(t, output, "\t")
+				assert.Contains(t, output, "1.1.1.1/32")
+			},
+		},
+		{
+			name: "template - filter and format",
+			cfg: CmdInspectConfig{
+				InputFile: testMMDB,
+				Inputs:    []string{"1.0.0.0/8"},
+				JSONPath:  `{range .items[?(@.record.registered_country.iso_code=="AU")]}{.network}{"\n"}{end}`,
+			},
+			wantErr: false,
+			verify: func(t *testing.T, result InspectResult) {
+				t.Helper()
+				assert.True(t, result.RawOutput)
+				output := string(result.Data)
+				assert.NotEmpty(t, output)
+				for _, line := range strings.Split(strings.TrimRight(output, "\n"), "\n") {
+					if line != "" {
+						assert.Contains(t, line, "/")
+					}
+				}
+			},
+		},
+		{
+			name: "template - missing field renders empty without error",
+			cfg: CmdInspectConfig{
+				InputFile: testMMDB,
+				Inputs:    []string{"1.1.1.1"},
+				JSONPath:  `{range .items[*]}{.nonexistent}{end}`,
+			},
+			wantErr: false,
+			verify: func(t *testing.T, result InspectResult) {
+				t.Helper()
+				assert.True(t, result.RawOutput)
+				assert.Equal(t, "", string(result.Data))
 			},
 		},
 		{
@@ -329,16 +364,17 @@ func TestInspectInMMDB(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "IP not in database",
+			name: "IP not in database - no JSONPath",
 			cfg: CmdInspectConfig{
 				InputFile: testMMDB,
 				Inputs:    []string{"192.168.1.1"},
 			},
 			wantErr: false,
-			verify: func(t *testing.T, result []byte) {
+			verify: func(t *testing.T, result InspectResult) {
 				t.Helper()
+				assert.False(t, result.RawOutput)
 				var parsed []map[string]interface{}
-				require.NoError(t, json.Unmarshal(result, &parsed))
+				require.NoError(t, json.Unmarshal(result.Data, &parsed))
 				assert.Len(t, parsed, 1)
 				records, ok := parsed[0]["records"].([]interface{})
 				require.True(t, ok)
@@ -355,7 +391,7 @@ func TestInspectInMMDB(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.NotNil(t, result)
+			assert.NotNil(t, result.Data)
 			if tt.verify != nil {
 				tt.verify(t, result)
 			}

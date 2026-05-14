@@ -52,6 +52,21 @@ func TestValidateExpression(t *testing.T) {
 			wantErr:    false,
 		},
 		{
+			name:       "valid range with end",
+			expression: `{range .items[*]}{.network}{"\n"}{end}`,
+			wantErr:    false,
+		},
+		{
+			name:       "valid union",
+			expression: "{['network','record']}",
+			wantErr:    false,
+		},
+		{
+			name:       "valid negative index",
+			expression: "{.items[-1:]}",
+			wantErr:    false,
+		},
+		{
 			name:       "invalid syntax - unclosed brace",
 			expression: "{.country",
 			wantErr:    true,
@@ -81,98 +96,109 @@ func TestValidateExpression(t *testing.T) {
 	}
 }
 
-func TestMatchesRecord(t *testing.T) {
+func TestExecuteTemplate(t *testing.T) {
 	t.Parallel()
 
-	record := map[string]interface{}{
-		"country": map[string]interface{}{
-			"iso_code":   "US",
-			"geoname_id": float64(6252001),
-			"names": map[string]interface{}{
-				"en": "United States",
-				"de": "Vereinigte Staaten",
+	root := map[string]interface{}{
+		"apiVersion": "mmdb-cli/v1",
+		"kind":       "InspectList",
+		"items": []map[string]interface{}{
+			{
+				"query":   "1.1.1.1",
+				"network": "1.1.1.0/24",
+				"record": map[string]interface{}{
+					"registered_country": map[string]interface{}{
+						"iso_code": "AU",
+					},
+				},
 			},
-		},
-		"continent": map[string]interface{}{
-			"code": "NA",
+			{
+				"query":   "8.8.8.8",
+				"network": "8.8.8.0/24",
+				"record": map[string]interface{}{
+					"registered_country": map[string]interface{}{
+						"iso_code": "US",
+					},
+				},
+			},
 		},
 	}
 
 	tests := []struct {
 		name       string
 		expression string
-		record     map[string]interface{}
-		want       bool
+		root       any
+		want       string
 		wantErr    bool
 	}{
 		{
-			name:       "matching filter - iso_code US",
-			expression: `{[?(@.country.iso_code=="US")]}`,
-			record:     record,
-			want:       true,
+			name:       "simple field access",
+			expression: "{.apiVersion}",
+			root:       root,
+			want:       "mmdb-cli/v1",
 			wantErr:    false,
 		},
 		{
-			name:       "non-matching filter - iso_code DE",
-			expression: `{[?(@.country.iso_code=="DE")]}`,
-			record:     record,
-			want:       false,
+			name:       "range over items - network only",
+			expression: `{range .items[*]}{.network}{"\n"}{end}`,
+			root:       root,
+			want:       "1.1.1.0/24\n8.8.8.0/24\n",
 			wantErr:    false,
 		},
 		{
-			name:       "matching nested field",
-			expression: `{[?(@.continent.code=="NA")]}`,
-			record:     record,
-			want:       true,
+			name:       "range with tab-separated fields",
+			expression: `{range .items[*]}{.network}{"\t"}{.record.registered_country.iso_code}{"\n"}{end}`,
+			root:       root,
+			want:       "1.1.1.0/24\tAU\n8.8.8.0/24\tUS\n",
 			wantErr:    false,
 		},
 		{
-			name:       "missing field - allowed by AllowMissingKeys",
-			expression: `{.nonexistent}`,
-			record:     record,
-			want:       false,
+			name:       "range with inline filter",
+			expression: `{range .items[?(@.record.registered_country.iso_code=="AU")]}{.network}{"\n"}{end}`,
+			root:       root,
+			want:       "1.1.1.0/24\n",
 			wantErr:    false,
 		},
 		{
-			name:       "empty record - no match",
-			expression: `{[?(@.country.iso_code=="US")]}`,
-			record:     map[string]interface{}{},
-			want:       false,
+			name:       "wildcard field access",
+			expression: "{.items[*].network}",
+			root:       root,
+			want:       "1.1.1.0/24 8.8.8.0/24",
 			wantErr:    false,
 		},
 		{
-			name:       "simple field access on wrapped record",
-			expression: `{.country.iso_code}`,
-			record:     record,
-			want:       false,
+			name:       "missing field renders empty - no error",
+			expression: "{.items[0].nonexistent}",
+			root:       root,
+			want:       "",
 			wantErr:    false,
 		},
 		{
-			name:       "invalid expression",
-			expression: `{[?(@.country==}`,
-			record:     record,
-			want:       false,
+			name:       "no implicit trailing newline",
+			expression: "{.apiVersion}",
+			root:       root,
+			want:       "mmdb-cli/v1",
+			wantErr:    false,
+		},
+		{
+			name:       "invalid expression returns error",
+			expression: "{.unclosed",
+			root:       root,
+			want:       "",
 			wantErr:    true,
-		},
-		{
-			name:       "nil record fields",
-			expression: `{.country.iso_code}`,
-			record:     map[string]interface{}{"country": nil},
-			want:       false,
-			wantErr:    false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := MatchesRecord(tt.expression, tt.record)
+			got, err := ExecuteTemplate(tt.expression, tt.root)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.want, string(got))
 		})
 	}
 }

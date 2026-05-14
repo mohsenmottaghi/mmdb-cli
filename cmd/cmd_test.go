@@ -140,13 +140,18 @@ func TestDumpCommand(t *testing.T) {
 	assert.Contains(t, string(data), "v1")
 }
 
-func TestDumpCommandWithJSONPath(t *testing.T) {
+func TestDumpCommandWithJSONPathTemplate(t *testing.T) {
 	dir := t.TempDir()
-	outFile := filepath.Join(dir, "filtered.json")
+	outFile := filepath.Join(dir, "networks.txt")
 
-	output, err := captureAndExecute(t, "dump", "-i", "../test/inspect.mmdb", "-o", outFile, "-j", `{[?(@.registered_country.iso_code=="AU")]}`)
+	output, err := captureAndExecute(t, "dump", "-i", "../test/inspect.mmdb", "-o", outFile,
+		"-f", `jsonpath={range .items[?(@.record.registered_country.iso_code=="AU")]}{.network}{"\n"}{end}`)
 	assert.NoError(t, err)
-	assert.Contains(t, output, "matched")
+	assert.Contains(t, output, "MMDB Dumped successfully")
+
+	data, readErr := os.ReadFile(outFile)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(data), "/")
 }
 
 func TestGenerateCommand(t *testing.T) {
@@ -197,6 +202,31 @@ func TestUpdateCommand(t *testing.T) {
 
 	_, statErr := os.Stat(outputPath)
 	assert.NoError(t, statErr)
+}
+
+func TestInspectCommandJSONPathFormat(t *testing.T) {
+	output, err := captureAndExecute(t, "inspect", "-i", "../test/inspect.mmdb",
+		"-f", `jsonpath={range .items[*]}{.network}{"\n"}{end}`, "1.1.1.1")
+	assert.NoError(t, err)
+	assert.Contains(t, output, "1.1.1.1/32")
+	assert.NotContains(t, output, "registered_country")
+}
+
+func TestDumpCommandTemplateFormat(t *testing.T) {
+	dir := t.TempDir()
+	outFile := filepath.Join(dir, "networks.txt")
+
+	output, err := captureAndExecute(t, "dump", "-i", "../test/inspect.mmdb", "-o", outFile,
+		"-f", `jsonpath={range .items[*]}{.network}{"\n"}{end}`)
+	assert.NoError(t, err)
+	assert.Contains(t, output, "MMDB Dumped successfully")
+
+	_, statErr := os.Stat(outFile)
+	assert.NoError(t, statErr)
+
+	data, readErr := os.ReadFile(outFile)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(data), "/")
 }
 
 func TestSubcommandRegistration(t *testing.T) {

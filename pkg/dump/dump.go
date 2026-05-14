@@ -85,7 +85,7 @@ func DumpMMMDB(cfg *CmdDumpConfig) error {
 	if isTemplateMode {
 		return dumpTemplate(cfg, db)
 	}
-	return dumpLegacy(cfg, db)
+	return dumpJSON(cfg, db)
 }
 
 func dumpTemplate(cfg *CmdDumpConfig, db *maxminddb.Reader) error {
@@ -151,7 +151,7 @@ func dumpTemplate(cfg *CmdDumpConfig, db *maxminddb.Reader) error {
 	return nil
 }
 
-func dumpLegacy(cfg *CmdDumpConfig, db *maxminddb.Reader) error {
+func dumpJSON(cfg *CmdDumpConfig, db *maxminddb.Reader) error {
 	outputFile, err := os.Create(cfg.OutputFile)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %s - %w", cfg.OutputFile, err)

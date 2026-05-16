@@ -43,7 +43,7 @@ jobs:
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
           GPG_PRIVATE_KEY_PATH: /tmp/GPG_PRIVATE_KEY.gpg
           NFPM_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
       - name: Remove GPG private key file
         if: always()
         run: |

@@ -47,6 +47,7 @@ homebrew_casks:
   - name: mmdb-cli
     binaries:
       - mmdb-cli
+    directory: Formula
     homepage: "https://infraz.io"
     description: |
       InfraZ MMDB-CLI is a command-line toolkit to work with MMDB files.

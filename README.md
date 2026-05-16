@@ -30,6 +30,15 @@ The official documentation for MMDB CLI is available on the
 > [!TIP]
 > We recommend reading the documentation to get a better understanding of the MMDB CLI and its functionalities.
 
+## Installation (Homebrew)
+
+On macOS, you can install MMDB CLI via the [InfraZ Homebrew tap](https://github.com/InfraZ/homebrew-tap):
+
+```bash
+brew tap infraz/tap
+brew install infraz/tap/mmdb-cli
+```
+
 ## Installation (Pre-compiled Binaries)
 
 ### Linux and macOS

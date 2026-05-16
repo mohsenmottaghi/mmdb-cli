@@ -17,6 +17,8 @@ MMDB CLI is a command-line open-source project, developed to simplify working wi
 |  Linux   |         arm64         |    ✅     |
 |  macOS   |         amd64         |    ✅     |
 |  macOS   | arm64 (Apple Silicon) |    ✅     |
+| FreeBSD  |         amd64         |    ✅     |
+| FreeBSD  |         arm64         |    ✅     |
 | Windows  |         amd64         |    ✅     |
 | Windows  |         arm64         |    ✅     |
 

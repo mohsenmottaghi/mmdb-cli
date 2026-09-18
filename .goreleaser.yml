@@ -51,13 +51,12 @@ homebrew_casks:
     description: |
       InfraZ MMDB-CLI is a command-line toolkit to work with MMDB files.
       It empowers you to create, transform, export, and explore MMDB files.
-    # Removes macOS quarantine bit — required since mmdb-cli is not notarized
-    hooks:
-      post:
-        install_steps: |
-          on_macos do
-            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/mmdb-cli"]
-          end
+    custom_block: |
+      postflight_steps do
+        on_macos do
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}/mmdb-cli"], must_succeed: false
+        end
+      end
     caveats: |
       mmdb-cli is not notarized by Apple. If macOS blocks the binary,
       run: xattr -dr com.apple.quarantine $(which mmdb-cli)

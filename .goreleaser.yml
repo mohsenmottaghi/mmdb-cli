@@ -54,9 +54,9 @@ homebrew_casks:
     # Removes macOS quarantine bit — required since mmdb-cli is not notarized
     hooks:
       post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/mmdb-cli"]
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/mmdb-cli"]
           end
     caveats: |
       mmdb-cli is not notarized by Apple. If macOS blocks the binary,
